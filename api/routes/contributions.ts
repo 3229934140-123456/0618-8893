@@ -47,20 +47,42 @@ router.get('/', (req: Request, res: Response): void => {
 });
 
 router.get('/ranking', (req: Request, res: Response): void => {
+  const { month } = req.query;
+
   const db = getDb();
   const members = db.query('member', {
     where: (m: any) => m.status === 'approved',
-    orderBy: (a: any, b: any) => b.contribution - a.contribution,
-    limit: 20,
   }) as any[];
 
-  const ranking: RankingMember[] = members.map((row, index) => ({
-    id: row.id,
-    nickname: row.nickname,
-    avatar: row.avatar,
-    contribution: row.contribution,
+  const memberMap = new Map<number, any>(members.map((m: any) => [m.id, m]));
+  let records = db.getTable('contribution_record') as any[];
+
+  if (month && typeof month === 'string' && /^\d{4}-\d{2}$/.test(month)) {
+    records = records.filter(r => String(r.created_at || '').slice(0, 7) === month);
+  }
+
+  const contributionByMember = new Map<number, number>();
+  records.forEach(r => {
+    const mid = r.member_id;
+    const current = contributionByMember.get(mid) || 0;
+    contributionByMember.set(mid, current + (Number(r.amount) || 0));
+  });
+
+  const rankedMembers = members
+    .map(m => ({
+      id: m.id,
+      nickname: m.nickname,
+      avatar: m.avatar,
+      contribution: contributionByMember.get(m.id) || 0,
+      roleId: m.role_id,
+    }))
+    .filter(m => m.contribution > 0 || (!month))
+    .sort((a, b) => b.contribution - a.contribution)
+    .slice(0, 20);
+
+  const ranking: RankingMember[] = rankedMembers.map((row, index) => ({
+    ...row,
     rank: index + 1,
-    roleId: row.role_id,
   }));
 
   res.json({
@@ -130,9 +152,17 @@ router.post('/', authMiddleware, (req: Request, res: Response): void => {
 
 router.post('/donate', authMiddleware, (req: Request, res: Response): void => {
   const member = req.member!;
-  const { amount, description } = req.body;
+  const { resource, quantity, amount, description } = req.body;
 
-  if (!amount || amount <= 0 || !description) {
+  const finalResource = resource as string | undefined;
+  const finalQuantity = typeof quantity === 'number' ? quantity : (typeof quantity === 'string' ? parseInt(quantity, 10) : undefined);
+  const finalAmount = typeof amount === 'number' ? amount : (typeof amount === 'string' ? parseInt(amount, 10) : undefined);
+  const finalDescription = description as string | undefined;
+
+  const donateAmount = finalAmount ?? (finalQuantity && finalQuantity > 0 ? finalQuantity * 10 : 0);
+  const donateDescription = finalDescription ?? (finalResource && finalQuantity ? `捐献 ${finalResource} × ${finalQuantity}` : '资源捐献');
+
+  if (!donateAmount || donateAmount <= 0) {
     res.status(400).json({
       success: false,
       error: '贡献数量和描述不能为空，且数量必须大于0',
@@ -144,20 +174,21 @@ router.post('/donate', authMiddleware, (req: Request, res: Response): void => {
 
   db.insert('contribution_record', {
     member_id: member.id,
-    amount,
+    amount: donateAmount,
     type: 'donate',
-    description,
+    description: donateDescription,
     created_at: formatDateTime(),
     related_id: null,
   });
 
   db.update('member', member.id, {
-    contribution: (member.contribution || 0) + amount,
+    contribution: (member.contribution || 0) + donateAmount,
   });
 
   res.status(201).json({
     success: true,
     message: '捐献成功',
+    data: { amount: donateAmount, description: donateDescription },
   } as ApiResponse<any>);
 });
 

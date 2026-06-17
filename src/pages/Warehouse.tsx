@@ -222,6 +222,20 @@ export default function Warehouse() {
     }
   };
 
+  const handleReject = async () => {
+    if (!selectedBorrow) return;
+    setActionLoading(true);
+    try {
+      await api.warehouse.rejectBorrow(selectedBorrow.id);
+      setApproveModalOpen(false);
+      fetchBorrows();
+    } catch (error) {
+      console.error("拒绝失败:", error);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleReturn = async (id: number) => {
     setActionLoading(true);
     try {
@@ -695,7 +709,7 @@ export default function Warehouse() {
             <Button variant="ghost" onClick={() => setApproveModalOpen(false)}>
               取消
             </Button>
-            <Button variant="danger" onClick={() => setApproveModalOpen(false)} loading={actionLoading}>
+            <Button variant="danger" onClick={handleReject} loading={actionLoading}>
               <X className="h-4 w-4" />
               拒绝
             </Button>

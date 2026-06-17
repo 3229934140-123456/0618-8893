@@ -245,6 +245,7 @@ router.delete('/:id/signup', authMiddleware, (req: Request, res: Response): void
 router.put('/:id/confirm', authMiddleware, (req: Request, res: Response): void => {
   const member = req.member!;
   const id = parseInt(req.params.id, 10);
+  const { signupIds } = req.body;
 
   const db = getDb();
   const activity = db.findById('activity', id);
@@ -266,17 +267,26 @@ router.put('/:id/confirm', authMiddleware, (req: Request, res: Response): void =
     return;
   }
 
-  const signups = db.query('activity_signup', {
+  let signups = db.query('activity_signup', {
     where: (s: any) => s.activity_id === id,
   }) as any[];
 
+  if (Array.isArray(signupIds) && signupIds.length > 0) {
+    signups = signups.filter(s => signupIds.includes(s.id));
+  }
+
+  let updatedCount = 0;
   signups.forEach(s => {
-    db.update('activity_signup', s.id, { confirmed: 1 });
+    if (!s.confirmed) {
+      db.update('activity_signup', s.id, { confirmed: 1 });
+      updatedCount++;
+    }
   });
 
   res.json({
     success: true,
-    message: '已确认所有报名',
+    message: `已确认 ${updatedCount} 个报名`,
+    data: { updatedCount },
   } as ApiResponse<any>);
 });
 

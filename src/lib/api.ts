@@ -190,6 +190,10 @@ export const api = {
         method: "PUT",
         body: JSON.stringify({ expectedReturnAt }),
       }),
+    rejectBorrow: (id: number) =>
+      request<BorrowRecord>(`/warehouse/borrows/${id}/reject`, {
+        method: "PUT",
+      }),
     returnBorrow: (id: number) =>
       request<BorrowRecord>(`/warehouse/borrows/${id}/return`, {
         method: "PUT",

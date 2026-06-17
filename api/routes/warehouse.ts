@@ -233,7 +233,7 @@ router.post('/borrows', authMiddleware, (req: Request, res: Response): void => {
 
 router.put('/borrows/:id/approve', authMiddleware, (req: Request, res: Response): void => {
   const member = req.member!;
-  if (member.roleId !== 'president' && member.roleId !== 'vice_president') {
+  if (member.roleId !== 'president' && member.roleId !== 'vice_president' && member.roleId !== 'leader') {
     res.status(403).json({
       success: false,
       error: '没有权限审批借用',
@@ -242,6 +242,7 @@ router.put('/borrows/:id/approve', authMiddleware, (req: Request, res: Response)
   }
 
   const id = parseInt(req.params.id, 10);
+  const { expectedReturnAt } = req.body;
   const db = getDb();
 
   const borrow = db.findById('borrow_record', id);
@@ -271,11 +272,16 @@ router.put('/borrows/:id/approve', authMiddleware, (req: Request, res: Response)
     return;
   }
 
-  db.update('borrow_record', id, {
+  const updateData: any = {
     status: 'approved',
     approved_at: formatDateTime(),
     approved_by: member.id,
-  });
+  };
+  if (expectedReturnAt) {
+    updateData.expected_return_at = expectedReturnAt;
+  }
+
+  db.update('borrow_record', id, updateData);
   db.update('warehouse_item', borrow.item_id, {
     available_quantity: item.available_quantity - borrow.quantity,
   });
@@ -283,6 +289,49 @@ router.put('/borrows/:id/approve', authMiddleware, (req: Request, res: Response)
   res.json({
     success: true,
     message: '借用已批准',
+  } as ApiResponse<any>);
+});
+
+router.put('/borrows/:id/reject', authMiddleware, (req: Request, res: Response): void => {
+  const member = req.member!;
+  if (member.roleId !== 'president' && member.roleId !== 'vice_president' && member.roleId !== 'leader') {
+    res.status(403).json({
+      success: false,
+      error: '没有权限拒绝借用',
+    } as ApiResponse<any>);
+    return;
+  }
+
+  const id = parseInt(req.params.id, 10);
+  const db = getDb();
+
+  const borrow = db.findById('borrow_record', id);
+
+  if (!borrow) {
+    res.status(404).json({
+      success: false,
+      error: '借用记录不存在',
+    } as ApiResponse<any>);
+    return;
+  }
+
+  if (borrow.status !== 'pending') {
+    res.status(400).json({
+      success: false,
+      error: '该借用不是待审批状态',
+    } as ApiResponse<any>);
+    return;
+  }
+
+  db.update('borrow_record', id, {
+    status: 'rejected',
+    approved_at: formatDateTime(),
+    approved_by: member.id,
+  });
+
+  res.json({
+    success: true,
+    message: '借用已拒绝',
   } as ApiResponse<any>);
 });
 
